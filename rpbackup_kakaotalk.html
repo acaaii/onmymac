@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KakaoTalk Log to HTML Converter</title>
+    <style>
+        :root {
+            --primary-color: #fee500;
+            --bg-color: #f0f0f0;
+            --text-color: #333;
+        }
+        body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 900px; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        h1 { text-align: center; font-size: 1.5rem; margin-bottom: 25px; color: #1a1a1a; }
+        
+        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 0.95rem; }
+        textarea { width: 100%; height: 180px; padding: 15px; border: 1px solid #ddd; border-radius: 10px; resize: vertical; box-sizing: border-box; font-size: 0.9rem; transition: border-color 0.3s; }
+        textarea:focus { outline: none; border-color: #aaa; }
+
+        /* 매핑 영역 */
+        .mapping-section { margin: 25px 0; padding: 20px; background: #fafafa; border-radius: 10px; border: 1px solid #eee; }
+        .mapping-grid { display: grid; gap: 15px; }
+        .mapping-row { display: grid; grid-template-columns: 1fr 1.5fr 2.5fr; gap: 10px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .mapping-row:last-child { border-bottom: none; }
+        .mapping-row input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.85rem; }
+        .orig-name { font-weight: bold; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* 버튼 */
+        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+        button { flex: 1; padding: 15px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 1rem; transition: transform 0.1s, opacity 0.2s; }
+        .btn-convert { background-color: var(--primary-color); color: #3c1e1e; }
+        .btn-copy { background-color: #333; color: white; }
+        button:hover { opacity: 0.9; }
+        button:active { transform: scale(0.98); }
+
+        /* 결과 창 */
+        .output-section { margin-top: 30px; }
+        #htmlOutput { background: #2d2d2d; color: #ccc; font-family: 'Courier New', Courier, monospace; height: 200px; }
+        
+        /* 미리보기 영역 */
+        .preview-container { margin-top: 20px; padding: 20px; border: 2px dashed #ddd; border-radius: 10px; background: white; min-height: 100px; }
+        .preview-title { font-size: 0.8rem; color: #999; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 1px; }
+
+        /* 스타일 가이드 (유저 요청 형식 유지) */
+        .msg-render { font-family: Arial, sans-serif; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>💬 카톡 대화 백업 변환기</h1>
+    
+    <label for="rawLog">1. 원본 로그 붙여넣기</label>
+    <textarea id="rawLog" placeholder="여기에 대화 내용을 복사해서 붙여넣으세요..."></textarea>
+    
+    <div class="mapping-section">
+        <label>2. 참여자 이름 및 프로필 설정</label>
+        <div id="mappingGrid" class="mapping-grid">
+            <p style="color: #999; font-size: 0.85rem;">로그를 입력하면 여기에 설정창이 나타납니다.</p>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn-convert" onclick="convert()">HTML 코드 생성</button>
+        <button class="btn-copy" onclick="copyCode()">코드 복사하기</button>
+    </div>
+
+    <div class="output-section">
+        <label>3. 생성된 HTML 소스</label>
+        <textarea id="htmlOutput" readonly></textarea>
+    </div>
+
+    <div class="preview-title">Preview</div>
+    <div id="previewArea" class="preview-container msg-render">
+        <!-- 미리보기가 여기에 표시됩니다 -->
+    </div>
+</div>
+
+<script>
+    const rawLogInput = document.getElementById('rawLog');
+    const mappingGrid = document.getElementById('mappingGrid');
+
+    // 입력이 감지될 때마다 이름 목록 업데이트
+    rawLogInput.addEventListener('input', () => {
+        const text = rawLogInput.value;
+        const names = new Set();
+        // 정규식: "2025. 12. 17. 16:23, 이름 : " 패턴 분석
+        const lines = text.split('\n');
+        const regex = /^\d{4}\.\s\d{1,2}\.\s\d{1,2}\.\s\d{1,2}:\d{2},\s(.+?)\s:/;
+        
+        lines.forEach(line => {
+            const match = line.match(regex);
+            if (match) names.add(match[1].trim());
+        });
+
+        if (names.size > 0) {
+            mappingGrid.innerHTML = '';
+            names.forEach(name => {
+                const row = document.createElement('div');
+                row.className = 'mapping-row';
+                row.innerHTML = `
+                    <span class="orig-name" title="${name}">${name}</span>
+                    <input type="text" class="new-name" placeholder="표시할 이름" value="${name}">
+                    <input type="text" class="profile-url" placeholder="프로필 이미지 URL (https://...)">
+                `;
+                mappingGrid.appendChild(row);
+            });
+        }
+    });
+
+    function convert() {
+        const rawText = rawLogInput.value;
+        const rows = document.querySelectorAll('.mapping-row');
+        const mapping = {};
+
+        rows.forEach(row => {
+            const orig = row.querySelector('.orig-name').innerText;
+            const renamed = row.querySelector('.new-name').value || orig;
+            const img = row.querySelector('.profile-url').value || 'https://via.placeholder.com/50';
+            mapping[orig] = { renamed, img };
+        });
+
+        const lines = rawText.split('\n');
+        const regex = /^\d{4}\.\s\d{1,2}\.\s\d{1,2}\.\s\d{1,2}:\d{2},\s(.+?)\s:\s(.+)/;
+        
+        let bodyContent = '';
+
+        lines.forEach(line => {
+            const match = line.match(regex);
+            if (match) {
+                const origName = match[1].trim();
+                const text = match[2].trim();
+                const info = mapping[origName];
+
+                if (info) {
+                    bodyContent += `
+<div class="message">
+    <img src="${info.img}" alt="${info.renamed}" class="profile-img">
+    <div class="message-content">
+        <div class="username">${info.renamed}</div>
+        <p class="text">${text}</p>
+    </div>
+</div>`;
+                }
+            }
+        });
+
+        const fullHtml = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversation Backup</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .message { display: flex; margin-bottom: 15px; align-items: flex-start; }
+    .profile-img { flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; margin-right: 10px; object-fit: cover; display: block; }
+    .message-content { max-width: 80%; flex: 1; }
+    .username { font-weight: bold; margin-bottom: 5px; margin-top: 0; }
+    .text { margin: 0; }
+</style>
+</head>
+<body>
+${bodyContent}
+</body>
+</html>`;
+
+        document.getElementById('htmlOutput').value = fullHtml;
+        document.getElementById('previewArea').innerHTML = bodyContent;
+    }
+
+    function copyCode() {
+        const output = document.getElementById('htmlOutput');
+        output.select();
+        document.execCommand('copy');
+        alert('코드가 클립보드에 복사되었습니다!');
+    }
+</script>
+
+</body>
+</html>
